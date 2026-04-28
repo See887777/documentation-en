@@ -1,6 +1,8 @@
 import os
 import shutil
 import re
+import time
+import requests
 from git import Repo
 import frontmatter
 
@@ -9,13 +11,89 @@ TIPS_REPO_URL = "https://github.com/tronprotocol/tips.git"
 TMP_DIR = "./.tmp_tips_repo"
 DEST_DIR = "docs/developers/tips"
 
+# In-memory cache to prevent hitting GitHub API rate limits for the same email
+GITHUB_CACHE = {}
+
+def fetch_github_profile(email):
+    """Fetch GitHub name, login, and html_url using the commit search API."""
+    if email in GITHUB_CACHE:
+        return GITHUB_CACHE[email]
+        
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        
+    try:
+        # 1. Search commits by author email
+        search_url = f"https://api.github.com/search/commits?q=author-email:{email}"
+        resp = requests.get(search_url, headers=headers, timeout=5)
+        
+        if resp.status_code == 403:
+            print(f"--> GitHub API rate limit hit for {email}. Falling back to raw string.")
+            GITHUB_CACHE[email] = None
+            return None
+            
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("total_count", 0) > 0 and data["items"][0].get("author"):
+                login = data["items"][0]["author"]["login"]
+                html_url = data["items"][0]["author"]["html_url"]
+                
+                # 2. Fetch detailed user profile to get the precise name
+                user_url = data["items"][0]["author"]["url"]
+                user_resp = requests.get(user_url, headers=headers, timeout=5)
+                
+                if user_resp.status_code == 200:
+                    user_data = user_resp.json()
+                    name = user_data.get("name") or login
+                else:
+                    name = login
+                    
+                # Format: hzhao([@zhaohong](https://github.com/zhaohong))
+                formatted_str = f"{name}([@{login}]({html_url}))"
+                GITHUB_CACHE[email] = formatted_str
+                
+                # Sleep briefly to respect GitHub Search API limits (30 req / min)
+                time.sleep(2)
+                return formatted_str
+                
+    except Exception as e:
+        print(f"--> Error fetching GitHub info for {email}: {e}")
+        
+    GITHUB_CACHE[email] = None
+    return None
+
+def process_authors(author_string):
+    """Extract emails, fetch GitHub profiles, and return the formatted author string."""
+    if not author_string or author_string.lower() == "unknown":
+        return "Unknown"
+        
+    # Split multiple authors by comma
+    parts = [p.strip() for p in author_string.split(',')]
+    new_parts = []
+    
+    for part in parts:
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', part)
+        if email_match:
+            email = email_match.group(0)
+            gh_info = fetch_github_profile(email)
+            if gh_info:
+                new_parts.append(gh_info)
+            else:
+                new_parts.append(part) # Fallback to original string if API fails
+        else:
+            new_parts.append(part)
+            
+    return ", ".join(new_parts)
+
 def sync_and_build():
     if os.path.exists(TMP_DIR):
         shutil.rmtree(TMP_DIR)
     print(f"Cloning repository: {TIPS_REPO_URL}...")
     Repo.clone_from(TIPS_REPO_URL, TMP_DIR, depth=1)
 
-    # Safe cleanup mode: do not delete the entire directory, only clean up auto-generated files
+    # Safe cleanup mode
     if not os.path.exists(DEST_DIR):
         os.makedirs(DEST_DIR)
     else:
@@ -37,7 +115,6 @@ def sync_and_build():
     print(f"Successfully located TIPs directory: {source_tips_path}")
 
     all_tips_data = []
-    # Define a list of files to ignore (use lowercase to prevent case sensitivity issues)
     ignored_files = {"readme.md", "license.md", "template.md"}
 
     for filename in os.listdir(source_tips_path):
@@ -51,7 +128,6 @@ def sync_and_build():
             metadata = post.metadata
             content = post.content
 
-            # Rescue early non-standard Markdown files without proper YAML frontmatter
             if not metadata:
                 for line in content.split('\n')[:20]:
                     if ':' in line and not line.startswith('#'):
@@ -60,6 +136,10 @@ def sync_and_build():
 
             status = str(metadata.get("status", "Unknown")).strip()
             title = str(metadata.get("title", "Untitled")).strip()
+            
+            # Read and process author string via GitHub API
+            raw_author = str(metadata.get("author", "Unknown")).strip()
+            processed_author = process_authors(raw_author)
             
             raw_type = str(metadata.get("type", "")).strip()
             raw_category = str(metadata.get("category", "")).strip()
@@ -84,7 +164,7 @@ def sync_and_build():
             all_tips_data.append({
                 "id": tip_id,
                 "title": title,
-                "author": str(metadata.get("author", "Unknown")).strip(),
+                "author": processed_author, # Inject the processed interactive author string
                 "status": status,
                 "category": tip_category,
                 "link": f"./{filename}"
@@ -94,21 +174,16 @@ def sync_and_build():
     print("TIP pages and categories processing completed!")
 
 def generate_category_pages(tips_data):
-    # ==========================================
-    # 1. Custom Category Order
-    # ==========================================
     preferred_category_order = ["Core", "Networking", "Interface", "TRC", "VM", "Informational"]
     all_categories = set(item['category'] for item in tips_data)
     
     categories = ["All"]
     for pref_cat in preferred_category_order:
-        # Case-insensitive matching for robustness
         matched_cat = next((c for c in all_categories if c.lower() == pref_cat.lower()), None)
         if matched_cat:
             categories.append(matched_cat)
             all_categories.remove(matched_cat)
     
-    # Append other categories not in the preset list alphabetically at the end
     categories.extend(sorted(list(all_categories)))
     print(f"--> Sorted TIP Categories: {categories}")
 
@@ -130,9 +205,6 @@ def generate_category_pages(tips_data):
                 status_dict[s] = []
             status_dict[s].append(item)
 
-        # ==========================================
-        # 2. Custom Status Order
-        # ==========================================
         preferred_status_order = ["Draft", "Last Call", "Accepted", "Final", "Deferred"]
         actual_statuses = list(status_dict.keys())
         ordered_statuses = []
@@ -143,7 +215,6 @@ def generate_category_pages(tips_data):
                 ordered_statuses.append(matched_status)
                 actual_statuses.remove(matched_status)
         
-        # Append other statuses not in the preset list alphabetically at the end
         ordered_statuses.extend(sorted(actual_statuses))
 
         with open(filepath, "w", encoding="utf-8") as f:
@@ -152,7 +223,6 @@ def generate_category_pages(tips_data):
             f.write("---\n\n")
             f.write("# TRON Improvement Proposals (TIPs)\n\n")
 
-            # Render Categories
             f.write("**Categories:**\n\n")
             cat_links = []
             for cat in categories:
@@ -167,7 +237,6 @@ def generate_category_pages(tips_data):
 
             f.write(" ".join(cat_links) + "\n\n")
 
-            # Render Status anchors
             if ordered_statuses:
                 f.write("**Quick Jump to Status:**\n\n")
                 status_links = []
@@ -178,7 +247,6 @@ def generate_category_pages(tips_data):
 
             f.write("---\n\n")
 
-            # Render the specific tables
             for status in ordered_statuses:
                 f.write(f"## {status}\n\n")
                 f.write("| TIP | Title | Author | Category |\n")
