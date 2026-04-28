@@ -4,7 +4,7 @@ import re
 from git import Repo
 import frontmatter
 
-# --- 配置区 ---
+# --- Configuration ---
 TIPS_REPO_URL = "https://github.com/tronprotocol/tips.git"
 TMP_DIR = "./.tmp_tips_repo"
 DEST_DIR = "docs/developers/tips"
@@ -12,10 +12,10 @@ DEST_DIR = "docs/developers/tips"
 def sync_and_build():
     if os.path.exists(TMP_DIR):
         shutil.rmtree(TMP_DIR)
-    print(f"正在克隆仓库: {TIPS_REPO_URL}...")
+    print(f"Cloning repository: {TIPS_REPO_URL}...")
     Repo.clone_from(TIPS_REPO_URL, TMP_DIR, depth=1)
 
-    # 安全清理模式：不删除整个文件夹，只清理自动生成的 tip 和 category 文件
+    # Safe cleanup mode: do not delete the entire directory, only clean up auto-generated files
     if not os.path.exists(DEST_DIR):
         os.makedirs(DEST_DIR)
     else:
@@ -34,9 +34,10 @@ def sync_and_build():
         else:
             source_tips_path = TMP_DIR
             
-    print(f"成功定位到 TIP 文件目录: {source_tips_path}")
+    print(f"Successfully located TIPs directory: {source_tips_path}")
 
     all_tips_data = []
+    # Define a list of files to ignore (use lowercase to prevent case sensitivity issues)
     ignored_files = {"readme.md", "license.md", "template.md"}
 
     for filename in os.listdir(source_tips_path):
@@ -50,6 +51,7 @@ def sync_and_build():
             metadata = post.metadata
             content = post.content
 
+            # Rescue early non-standard Markdown files without proper YAML frontmatter
             if not metadata:
                 for line in content.split('\n')[:20]:
                     if ':' in line and not line.startswith('#'):
@@ -59,7 +61,6 @@ def sync_and_build():
             status = str(metadata.get("status", "Unknown")).strip()
             title = str(metadata.get("title", "Untitled")).strip()
             
-            # --- 核心修改：优先使用 Category，没有则回退到 Type ---
             raw_type = str(metadata.get("type", "")).strip()
             raw_category = str(metadata.get("category", "")).strip()
             
@@ -75,7 +76,6 @@ def sync_and_build():
             tip_id = nums[0] if nums else str(tip_id_raw)
 
             new_post = frontmatter.Post(content, **metadata)
-            # 给单篇文档注入 category 标签
             new_post.metadata["tags"] = [status, tip_category]
 
             with open(os.path.join(DEST_DIR, filename), 'w', encoding='utf-8') as f:
@@ -86,18 +86,31 @@ def sync_and_build():
                 "title": title,
                 "author": str(metadata.get("author", "Unknown")).strip(),
                 "status": status,
-                "category": tip_category, # 使用修正后的 category
+                "category": tip_category,
                 "link": f"./{filename}"
             })
 
     generate_category_pages(all_tips_data)
-    print("TIP 页面及分类处理完成！")
+    print("TIP pages and categories processing completed!")
 
 def generate_category_pages(tips_data):
-    # 根据提取到的 category 进行去重和排序
+    # ==========================================
+    # 1. Custom Category Order
+    # ==========================================
+    preferred_category_order = ["Core", "Networking", "Interface", "TRC", "VM", "Informational"]
     all_categories = set(item['category'] for item in tips_data)
-    categories = ["All"] + sorted(list(all_categories))
-    print(f"--> 解析到的所有 TIP 分类 (Categories): {categories}")
+    
+    categories = ["All"]
+    for pref_cat in preferred_category_order:
+        # Case-insensitive matching for robustness
+        matched_cat = next((c for c in all_categories if c.lower() == pref_cat.lower()), None)
+        if matched_cat:
+            categories.append(matched_cat)
+            all_categories.remove(matched_cat)
+    
+    # Append other categories not in the preset list alphabetically at the end
+    categories.extend(sorted(list(all_categories)))
+    print(f"--> Sorted TIP Categories: {categories}")
 
     for current_cat in categories:
         if current_cat == "All":
@@ -117,18 +130,29 @@ def generate_category_pages(tips_data):
                 status_dict[s] = []
             status_dict[s].append(item)
 
-        preferred_order = ["Final", "Accepted", "Last Call", "Review", "Draft", "Stagnant", "Withdrawn", "Unknown"]
+        # ==========================================
+        # 2. Custom Status Order
+        # ==========================================
+        preferred_status_order = ["Draft", "Last Call", "Accepted", "Final", "Deferred"]
         actual_statuses = list(status_dict.keys())
-        ordered_statuses = [s for s in preferred_order if s in actual_statuses] + sorted([s for s in actual_statuses if s not in preferred_order])
+        ordered_statuses = []
+        
+        for pref_status in preferred_status_order:
+            matched_status = next((s for s in actual_statuses if s.lower() == pref_status.lower()), None)
+            if matched_status:
+                ordered_statuses.append(matched_status)
+                actual_statuses.remove(matched_status)
+        
+        # Append other statuses not in the preset list alphabetically at the end
+        ordered_statuses.extend(sorted(actual_statuses))
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("---\n")
-            # 保持侧边栏显示，这里不加上 hide: toc
             f.write("search:\n  boost: 2\n")
             f.write("---\n\n")
             f.write("# TRON Improvement Proposals (TIPs)\n\n")
 
-            # 1. 渲染 Categories
+            # Render Categories
             f.write("**Categories:**\n\n")
             cat_links = []
             for cat in categories:
@@ -143,7 +167,7 @@ def generate_category_pages(tips_data):
 
             f.write(" ".join(cat_links) + "\n\n")
 
-            # 2. 渲染 Statuses 锚点
+            # Render Status anchors
             if ordered_statuses:
                 f.write("**Quick Jump to Status:**\n\n")
                 status_links = []
@@ -154,10 +178,9 @@ def generate_category_pages(tips_data):
 
             f.write("---\n\n")
 
-            # 3. 渲染具体的表格
+            # Render the specific tables
             for status in ordered_statuses:
                 f.write(f"## {status}\n\n")
-                # 表头把 Type 改为 Category
                 f.write("| TIP | Title | Author | Category |\n")
                 f.write("| :--- | :--- | :--- | :--- |\n")
                 
@@ -168,7 +191,6 @@ def generate_category_pages(tips_data):
                 sorted_items = sorted(status_dict[status], key=sort_key)
                 
                 for item in sorted_items:
-                    # 表格内容输出 item['category']
                     f.write(f"| {item['id']} | [{item['title']}]({item['link']}) | {item['author']} | {item['category']} |\n")
                 f.write("\n")
 
