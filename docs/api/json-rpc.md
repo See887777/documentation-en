@@ -4,13 +4,13 @@
 
 JSON-RPC is a stateless, lightweight remote procedure call (RPC) protocol. The JSON-RPC interface supported by the TRON network is compatible with Ethereum's. However, due to the difference in chain mechanism and design, TRON cannot support some interfaces on Ethereum. At the same time, TRON also provides dedicated APIs to create different types of transactions.
 
-**Please pay attention**
+**Note:**
 
-- The JSON-RPC service needs to be enabled and set the port in the node configuration file. If not configured, the service is disable by default. 
+- The JSON-RPC service needs to be enabled and its port set in the node configuration file. If not configured, the service is disabled by default. 
 
-### How to enable or disable JSON-RPC service of a node
+### How to Enable or Disable the JSON-RPC Service of a Node
 
-Add below items in node's [configuration file](https://github.com/tronprotocol/java-tron/blob/develop/framework/src/main/resources/config.conf), then enable or disable it:  
+Add the following items to the node's [configuration file](https://github.com/tronprotocol/java-tron/blob/develop/framework/src/main/resources/config.conf), to enable or disable the service:  
 ```
 node.jsonrpc {  
     httpFullNodeEnable = true  
@@ -22,7 +22,7 @@ node.jsonrpc {
 
 ### HEX value encoding
 
-At present there are two key data types that are passed over JSON: unformatted byte arrays and quantities. Both are passed with a hex encoding, however with different requirements to formatting:
+Currently, there are two key data types passed over JSON: unformatted byte arrays and quantities. Both are passed with a hex encoding, however with different requirements to formatting:
 
 When encoding QUANTITIES (integers, numbers): encode as hex, prefix with “0x”, the most compact representation (slight exception: zero should be represented as “0x0”).  
 Examples:
@@ -116,7 +116,7 @@ curl -X POST 'https://api.shasta.trongrid.io/jsonrpc' --data '{"jsonrpc":"2.0","
 | to        | DATA, 20 Bytes | Contract address.  Hex format address, remove the prefix "41" |
 | gas       | QUANTITY       | Not supported. The value is 0x0                               |
 | gasPrice  | QUANTITY       | Not supported. The value is 0x0                               |
-| value     | QUANTITY       | Not supported. The value is 0x0                               |
+| value     | QUANTITY       | Amount of TRX sent with this transaction(Unit:sun, format: hex); default: 0x0                               |
 | data      | DATA           | Hash of the method signature and encoded parameters.          |
 
 2\. QUANTITY|TAG - currently, only "latest" is available. 
@@ -962,7 +962,7 @@ curl -X POST 'https://api.shasta.trongrid.io/jsonrpc' --data '{
 
 	"method": "eth_getBlockReceipts",
 
-	"params": ["0x5416c22"],
+	"params": ["0x311110"],
 
 	"id": 64
 
@@ -973,7 +973,28 @@ curl -X POST 'https://api.shasta.trongrid.io/jsonrpc' --data '{
 Result
 
 ```json
-   {"jsonrpc":"2.0","id":1,"result":null}
+{
+    "jsonrpc": "2.0",
+    "id": 64,
+    "result": [
+      {
+        "blockHash": "0x0000000000311110a1bdce5bbd0bd790c27ac9681f1b3db6abd62bcc1c05dbe9",
+        "blockNumber": "0x311110",
+        "contractAddress": null,
+        "cumulativeGasUsed": "0x13dc7",
+        "effectiveGasPrice": "0xa",
+        "from": "0x702f9b337aeb8be3e767345cc4954f20fa100b21",
+        "gasUsed": "0x13dc7",
+        "logs": [],
+        "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "status": "0x1",
+        "to": "0x970cabfb1ca0cdd5dae19e309f0226061ed28753",
+        "transactionHash": "0x2bd303c0e75a705ee51fb16695dd7654588db968bc1735b9f7d8f6ce6b56a41b",
+        "transactionIndex": "0x0",
+        "type": "0x0"
+      }
+    ]
+}
 ```
 
 ### eth_getWork
@@ -1184,7 +1205,7 @@ QUANTITY - the filter id.
 
 **Returns**
 
-- For filters created with eth_newFilte, return logs object list, each log object with following params:
+- For filters created with eth_newFilter, return logs object list, each log object with following params:
 
 | Field            | Type           | Description                                                                                 |
 | :--------------- | :------------- | :------------------------------------------------------------------------------------------ |
