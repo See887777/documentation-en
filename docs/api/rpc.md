@@ -114,7 +114,7 @@ rpc ParticipateAssetIssue (ParticipateAssetIssueContract) returns (Transaction) 
 ```
 Nodes: FullNode
 
-## Query the list of nodes connected to the API's IP address
+## Query the list of connected peer nodes
 ```protobuf
 rpc ListNodes (EmptyMessage) returns (NodeList) {}
 ```
