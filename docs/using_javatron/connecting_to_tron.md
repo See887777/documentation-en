@@ -308,7 +308,6 @@ node {
   
   Compared to traditional static seed node list, the DNS tree mechanism offers advantages in P2P network bootstrapping, such as dynamic node updates and resistance to attacks.
   
-Currently, target nodes for active connections come from three sources: configured active nodes, nodes obtained through node discovery, and DNS tree nodes.
 
 ### Passive Connections
 -  The current node will always accept connection requests from nodes listed under `node.passive`
