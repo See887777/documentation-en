@@ -2,11 +2,10 @@ name: Publish Document
 
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
-  # 可选：为了实现真正的“自动化同步”，建议取消下面几行的注释
-  # push:
-  #   branches: [main] # or master 
-  # schedule:
-  #   - cron: '0 0 * * *' # 每天 UTC 时间凌晨 0 点自动抓取最新 TIP 并发布
+  push:
+     branches: [master] # or master 
+  schedule:
+     - cron: '0 0 * * *' 
 
 permissions:
   contents: write

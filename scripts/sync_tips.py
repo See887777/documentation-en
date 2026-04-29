@@ -11,7 +11,35 @@ TIPS_REPO_URL = "https://github.com/tronprotocol/tips.git"
 TMP_DIR = "./.tmp_tips_repo"
 DEST_DIR = "docs/developers/tips"
 
-# In-memory cache to prevent hitting GitHub API rate limits for the same email
+# 1. Hardcoded Manual Map for known contributors
+MANUAL_AUTHOR_MAP = {
+    "getty.io": "dbuarque([@dbuarque](https://github.com/dbuarque))",
+    "jiangyangyang@tron.network": "jiangyy0824([@jiangyy0824](https://github.com/jiangyy0824))",
+    "nanfengpo@hotmail.com": "nanfengpo([@nanfengpo](https://github.com/nanfengpo))",
+    "zhaohong2292@gmail.com": "zhaohong([@zhaohong](https://github.com/zhaohong))",
+    "liangzhiyan@tron.network": "lvs007([@lvs007](https://github.com/lvs007))",
+    "@ithinker1991": "yinshucheng([@yinshucheng](https://github.com/yinshucheng))",
+    "jiangxinjian@tron.network": "BlueHoopor([@BlueHoopor](https://github.com/BlueHoopor))",
+    "xing@tron.network": "billtron([@billtron](https://github.com/billtron))",
+    "federico.zhen@tron.network": "Federico2014([@Federico2014](https://github.com/Federico2014))",
+    "leo.hou@tron.network": "Federico2014([@Federico2014](https://github.com/Federico2014))",
+    "liu.sean@tron.network": "renchenchang([@renchenchang](http://github.com/renchenchang))",
+    "neo.hong@tron.network": "Lredhdx([@Lredhdx](https://github.com/Lredhdx))",
+    "kiven.liang@tron.network": "lvs007([@lvs007](https://github.com/lvs007))",
+    "andy.zhang@tron.network": "zhang0125([@zhang0125](https://github.com/zhang0125))",
+    "wb_bupt@163.com": "xxo1shine([@xxo1shine](https://github.com/xxo1shine))",
+    "lucas.wu@tron.network": "xxo1shine([@xxo1shine](https://github.com/xxo1shine))",
+    "lxcmyf@gmail.com": "lxcmyf([@lxcmyf](https://github.com/lxcmyf))",
+    "raymondliu0711": "raymondliu0711([@raymondliu0711](https://github.com/raymondliu0711))",
+    "cooperdepp90@outlook.com": "CooperDepp([@CooperDepp](https://github.com/CooperDepp))",
+    "allen.cheng@tron.network": "jwrct([@jwrct](https://github.com/jwrct))",
+    "lei19942016@hotmail.com": "raymondliu0711([@raymondliu0711](https://github.com/raymondliu0711))",
+    "aaronluotron@gmail.com": "EllenWhitmore([@EllenWhitmore](https://github.com/EllenWhitmore))",
+    "lopeed_prcy": "lopeed([@lopeed](https://github.com/lopeed))",
+    "liang3885@hotmail.com": "raymondliu0711([@raymondliu0711](https://github.com/raymondliu0711))"
+}
+
+# 2. In-memory cache to prevent hitting GitHub API rate limits
 GITHUB_CACHE = {}
 
 def fetch_github_profile(email):
@@ -25,7 +53,6 @@ def fetch_github_profile(email):
         headers["Authorization"] = f"Bearer {token}"
         
     try:
-        # 1. Search commits by author email
         search_url = f"https://api.github.com/search/commits?q=author-email:{email}"
         resp = requests.get(search_url, headers=headers, timeout=5)
         
@@ -40,7 +67,6 @@ def fetch_github_profile(email):
                 login = data["items"][0]["author"]["login"]
                 html_url = data["items"][0]["author"]["html_url"]
                 
-                # 2. Fetch detailed user profile to get the precise name
                 user_url = data["items"][0]["author"]["url"]
                 user_resp = requests.get(user_url, headers=headers, timeout=5)
                 
@@ -50,12 +76,9 @@ def fetch_github_profile(email):
                 else:
                     name = login
                     
-                # Format: hzhao([@zhaohong](https://github.com/zhaohong))
                 formatted_str = f"{name}([@{login}]({html_url}))"
                 GITHUB_CACHE[email] = formatted_str
-                
-                # Sleep briefly to respect GitHub Search API limits (30 req / min)
-                time.sleep(2)
+                time.sleep(2) # Respect GitHub limits
                 return formatted_str
                 
     except Exception as e:
@@ -65,15 +88,25 @@ def fetch_github_profile(email):
     return None
 
 def process_authors(author_string):
-    """Extract emails, fetch GitHub profiles, and return the formatted author string."""
+    """Extract emails, check manual map, fetch GitHub profiles, and return formatted string."""
     if not author_string or author_string.lower() == "unknown":
         return "Unknown"
         
-    # Split multiple authors by comma
     parts = [p.strip() for p in author_string.split(',')]
     new_parts = []
     
     for part in parts:
+        matched_manual = False
+        
+        for key, formatted_author in MANUAL_AUTHOR_MAP.items():
+            if key.lower() in part.lower():
+                new_parts.append(formatted_author)
+                matched_manual = True
+                break
+                
+        if matched_manual:
+            continue
+            
         email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', part)
         if email_match:
             email = email_match.group(0)
@@ -81,7 +114,7 @@ def process_authors(author_string):
             if gh_info:
                 new_parts.append(gh_info)
             else:
-                new_parts.append(part) # Fallback to original string if API fails
+                new_parts.append(part)
         else:
             new_parts.append(part)
             
@@ -117,6 +150,9 @@ def sync_and_build():
     all_tips_data = []
     ignored_files = {"readme.md", "license.md", "template.md"}
 
+    # Dynamically extract the relative folder path for GitHub URLs
+    rel_folder = os.path.relpath(source_tips_path, TMP_DIR).replace("\\", "/")
+
     for filename in os.listdir(source_tips_path):
         if filename.endswith(".md") and filename.lower() not in ignored_files:
             src_path = os.path.join(source_tips_path, filename)
@@ -137,7 +173,6 @@ def sync_and_build():
             status = str(metadata.get("status", "Unknown")).strip()
             title = str(metadata.get("title", "Untitled")).strip()
             
-            # Read and process author string via GitHub API
             raw_author = str(metadata.get("author", "Unknown")).strip()
             processed_author = process_authors(raw_author)
             
@@ -155,19 +190,26 @@ def sync_and_build():
             nums = re.findall(r'\d+', str(tip_id_raw))
             tip_id = nums[0] if nums else str(tip_id_raw)
 
+            # Rebuild standardized Markdown for local search index
             new_post = frontmatter.Post(content, **metadata)
             new_post.metadata["tags"] = [status, tip_category]
 
             with open(os.path.join(DEST_DIR, filename), 'w', encoding='utf-8') as f:
                 f.write(frontmatter.dumps(new_post))
 
+            # --- Modification: Change local link to GitHub repository link ---
+            if rel_folder == ".":
+                github_link = f"https://github.com/tronprotocol/tips/blob/master/{filename}"
+            else:
+                github_link = f"https://github.com/tronprotocol/tips/blob/master/{rel_folder}/{filename}"
+
             all_tips_data.append({
                 "id": tip_id,
                 "title": title,
-                "author": processed_author, # Inject the processed interactive author string
+                "author": processed_author,
                 "status": status,
                 "category": tip_category,
-                "link": f"./{filename}"
+                "link": github_link  # Use GitHub URL here
             })
 
     generate_category_pages(all_tips_data)
@@ -252,11 +294,14 @@ def generate_category_pages(tips_data):
                 f.write("| TIP | Title | Author | Category |\n")
                 f.write("| :--- | :--- | :--- | :--- |\n")
                 
+                # --- Modification: Sort in Descending Order ---
                 def sort_key(x):
                     nums = re.findall(r'\d+', str(x['id']))
-                    return int(nums[0]) if nums else 999999
+                    # Return -1 for items without numbers so they stay at the bottom when reversed
+                    return int(nums[0]) if nums else -1
                         
-                sorted_items = sorted(status_dict[status], key=sort_key)
+                # Added reverse=True to sort newest first
+                sorted_items = sorted(status_dict[status], key=sort_key, reverse=True)
                 
                 for item in sorted_items:
                     f.write(f"| {item['id']} | [{item['title']}]({item['link']}) | {item['author']} | {item['category']} |\n")
