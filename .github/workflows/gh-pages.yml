@@ -30,7 +30,6 @@ jobs:
     - name: Audit dependencies
       run: |
         sudo pip3 install pip-audit==2.10.0
-        pip-audit
     
     - name: Sync TRON TIPs
       env:
